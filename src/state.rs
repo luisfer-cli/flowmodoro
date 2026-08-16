@@ -151,3 +151,67 @@ impl Session {
         self.accumulated = Duration::ZERO;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hooks() -> HooksConfig {
+        HooksConfig {
+            on_work_start: None,
+            on_work_end: None,
+            on_break_start: None,
+            on_break_end: None,
+        }
+    }
+
+    #[test]
+    fn pomodoro_initial_state() {
+        let s = Session::new_pomodoro(1500, 300, 900, 4, Some("task".into()), hooks());
+        assert_eq!(s.state, SessionState::Working);
+        assert_eq!(s.session_type, SessionType::Pomodoro);
+        assert_eq!(s.current_session, 1);
+        assert_eq!(s.work_duration.as_secs(), 1500);
+        assert!(!s.is_expired());
+    }
+
+    #[test]
+    fn flowmodoro_never_expires_while_working() {
+        let s = Session::new_flowmodoro(5.0, None, hooks());
+        assert_eq!(s.session_type, SessionType::Flowmodoro);
+        assert!(!s.is_expired());
+    }
+
+    #[test]
+    fn advance_to_work_wraps_around() {
+        let mut s = Session::new_pomodoro(1500, 300, 900, 4, None, hooks());
+        s.advance_to_work();
+        assert_eq!(s.current_session, 2);
+        s.advance_to_work();
+        s.advance_to_work();
+        assert_eq!(s.current_session, 4);
+        s.advance_to_work();
+        assert_eq!(s.current_session, 1);
+    }
+
+    #[test]
+    fn long_break_used_on_last_session() {
+        let mut s = Session::new_pomodoro(1500, 300, 900, 4, None, hooks());
+        s.advance_to_work();
+        s.advance_to_work();
+        s.advance_to_work();
+        assert_eq!(s.current_session, 4);
+        s.advance_to_break();
+        assert_eq!(s.total_duration().as_secs(), 900);
+    }
+
+    #[test]
+    fn flow_request_break_sets_proportional_break() {
+        let mut s = Session::new_flowmodoro(5.0, None, hooks());
+        s.accumulated = Duration::from_secs(3000);
+        s.phase_start = None;
+        s.flow_request_break();
+        assert_eq!(s.state, SessionState::OnBreak);
+        assert_eq!(s.break_duration.as_secs(), 600);
+    }
+}

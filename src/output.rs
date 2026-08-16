@@ -16,29 +16,33 @@ pub fn human(status: &StatusResponse) {
         }
         SessionState::Working => {
             let elapsed = format_duration(status.elapsed_secs);
-            let total = format_duration(status.total_duration_secs);
-            let remaining = if status.elapsed_secs < status.total_duration_secs {
-                format_duration(status.total_duration_secs - status.elapsed_secs)
-            } else {
-                "done".to_string()
-            };
-            let emoji = match status.session_type {
-                Some(SessionType::Pomodoro) | None => "🍅",
-                Some(SessionType::Flowmodoro) => "🌊",
+            let label = match status.session_type {
+                Some(SessionType::Pomodoro) | None => "Pomodoro",
+                Some(SessionType::Flowmodoro) => "Flowmodoro",
             };
             let task = status
                 .task
                 .as_deref()
                 .map(|t| format!(" ({})", t))
                 .unwrap_or_default();
-            let session_info = format!(
-                "session {}/{}",
-                status.current_session, status.sessions_before_long_break
-            );
-            println!(
-                "{} Working{} - [{}] elapsed: {} | remaining: {} | total: {}",
-                emoji, task, session_info, elapsed, remaining, total,
-            );
+            if status.session_type == Some(SessionType::Flowmodoro) {
+                println!("{} Working{} - elapsed: {}", label, task, elapsed);
+            } else {
+                let total = format_duration(status.total_duration_secs);
+                let remaining = if status.elapsed_secs < status.total_duration_secs {
+                    format_duration(status.total_duration_secs - status.elapsed_secs)
+                } else {
+                    "done".to_string()
+                };
+                let session_info = format!(
+                    "session {}/{}",
+                    status.current_session, status.sessions_before_long_break
+                );
+                println!(
+                    "{} Working{} - [{}] elapsed: {} | remaining: {} | total: {}",
+                    label, task, session_info, elapsed, remaining, total,
+                );
+            }
         }
         SessionState::OnBreak => {
             let elapsed = format_duration(status.elapsed_secs);
@@ -48,15 +52,14 @@ pub fn human(status: &StatusResponse) {
             } else {
                 "done".to_string()
             };
-            let emoji = "☕";
             println!(
-                "{} On break - elapsed: {} | remaining: {} | total: {}",
-                emoji, elapsed, remaining, total,
+                "Break - elapsed: {} | remaining: {} | total: {}",
+                elapsed, remaining, total,
             );
         }
         SessionState::Paused => {
             let elapsed = format_duration(status.elapsed_secs);
-            println!("⏸ Paused at {}", elapsed);
+            println!("Paused at {}", elapsed);
         }
     }
 }
@@ -67,30 +70,32 @@ pub fn json(status: &StatusResponse) {
 
 pub fn waybar(status: &StatusResponse) {
     let (text, class) = match status.state {
-        SessionState::Idle => ("○".to_string(), "idle".to_string()),
+        SessionState::Idle => ("".to_string(), "idle".to_string()),
         SessionState::Working => {
-            let remaining = status
-                .total_duration_secs
-                .saturating_sub(status.elapsed_secs);
             let icon = match status.session_type {
-                Some(SessionType::Flowmodoro) => "🌊",
-                _ => "🍅",
+                Some(SessionType::Flowmodoro) => "F",
+                _ => "P",
             };
-            (
-                format!("{} {}", icon, format_duration(remaining)),
-                "working".to_string(),
-            )
+            let text = if status.session_type == Some(SessionType::Flowmodoro) {
+                format!("{} {}", icon, format_duration(status.elapsed_secs))
+            } else {
+                let remaining = status
+                    .total_duration_secs
+                    .saturating_sub(status.elapsed_secs);
+                format!("{} {}", icon, format_duration(remaining))
+            };
+            (text, "working".to_string())
         }
         SessionState::OnBreak => {
             let remaining = status
                 .total_duration_secs
                 .saturating_sub(status.elapsed_secs);
             (
-                format!("☕ {}", format_duration(remaining)),
+                format!("B {}", format_duration(remaining)),
                 "break".to_string(),
             )
         }
-        SessionState::Paused => ("⏸".to_string(), "paused".to_string()),
+        SessionState::Paused => ("Paused".to_string(), "paused".to_string()),
     };
 
     let percentage = (status.elapsed_secs * 100)

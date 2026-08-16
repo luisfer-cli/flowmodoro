@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 struct DaemonSession {
     session: Option<Session>,
     last_tick: Instant,
+    pending_notifications: Vec<(String, String, u8)>,
 }
 
 impl DaemonSession {
@@ -18,6 +19,7 @@ impl DaemonSession {
         DaemonSession {
             session: None,
             last_tick: Instant::now(),
+            pending_notifications: Vec::new(),
         }
     }
 
@@ -27,9 +29,13 @@ impl DaemonSession {
 
     fn tick(&mut self) {
         if let Some(ref mut s) = self.session {
+            for (summary, body, urgency) in self.pending_notifications.drain(..) {
+                notify::send(&summary, &body, urgency);
+            }
+
             let elapsed = self.last_tick.elapsed();
-            s.accumulated += elapsed;
             if s.phase_start.is_some() {
+                s.accumulated += elapsed;
                 s.phase_start = Some(Instant::now());
             }
             self.last_tick = Instant::now();
@@ -52,14 +58,14 @@ impl DaemonSession {
                         }
 
                         hooks::run_on_work_end(&s.hooks);
-                        notify::send(
-                            "Work session complete!",
-                            &format!(
+                        self.pending_notifications.push((
+                            "Work session complete!".to_string(),
+                            format!(
                                 "Worked for {}. Time for a break.",
                                 format_duration(worked_secs),
                             ),
                             2,
-                        );
+                        ));
 
                         s.advance_to_break();
                         hooks::run_on_break_start(&s.hooks);
@@ -70,11 +76,11 @@ impl DaemonSession {
                         })
                         .as_secs()
                             / 60;
-                        notify::send(
-                            "Break time!",
-                            &format!("Take a {} minute break.", break_mins),
+                        self.pending_notifications.push((
+                            "Break time!".to_string(),
+                            format!("Take a {} minute break.", break_mins),
                             1,
-                        );
+                        ));
                     }
                     SessionState::OnBreak => {
                         let session_done = s.current_session >= s.sessions_before_long_break;
@@ -87,42 +93,52 @@ impl DaemonSession {
                                 2,
                             );
                             self.session = None;
+                            self.pending_notifications.clear();
                         } else if s.session_type == SessionType::Flowmodoro {
                             notify::send("Break complete!", "Your flowmodoro cycle is done.", 1);
                             self.session = None;
+                            self.pending_notifications.clear();
                         } else {
                             s.advance_to_work();
                             hooks::run_on_work_start(&s.hooks);
-                            notify::send(
-                                "Break over!",
-                                &format!(
+                            self.pending_notifications.push((
+                                "Break over!".to_string(),
+                                format!(
                                     "Starting session {}/{}.",
                                     s.current_session, s.sessions_before_long_break
                                 ),
                                 2,
-                            );
+                            ));
                         }
                     }
                     _ => {}
                 }
             }
+        } else {
+            self.pending_notifications.clear();
         }
     }
 
     fn to_status(&self) -> StatusResponse {
         match &self.session {
-            Some(s) => StatusResponse {
-                state: s.state,
-                session_type: Some(s.session_type),
-                elapsed_secs: s.elapsed().as_secs(),
-                total_duration_secs: s.total_duration().as_secs(),
-                task: s.task.clone(),
-                current_session: s.current_session,
-                sessions_before_long_break: s.sessions_before_long_break,
-                work_duration_secs: s.work_duration.as_secs(),
-                break_duration_secs: s.break_duration.as_secs(),
-                accumulated_work_secs: s.accumulated.as_secs(),
-            },
+            Some(s) => {
+                let total = match (s.state, s.session_type) {
+                    (SessionState::Working, SessionType::Flowmodoro) => 0,
+                    _ => s.total_duration().as_secs(),
+                };
+                StatusResponse {
+                    state: s.state,
+                    session_type: Some(s.session_type),
+                    elapsed_secs: s.elapsed().as_secs(),
+                    total_duration_secs: total,
+                    task: s.task.clone(),
+                    current_session: s.current_session,
+                    sessions_before_long_break: s.sessions_before_long_break,
+                    work_duration_secs: s.work_duration.as_secs(),
+                    break_duration_secs: s.break_duration.as_secs(),
+                    accumulated_work_secs: s.accumulated.as_secs(),
+                }
+            }
             None => StatusResponse {
                 state: SessionState::Idle,
                 session_type: None,
@@ -220,6 +236,7 @@ impl DaemonSession {
 
                     self.session = None;
                     self.last_tick = Instant::now();
+                    self.pending_notifications.clear();
                     notify::send(
                         "Session cancelled",
                         "The current session has been cancelled.",
@@ -278,6 +295,7 @@ impl DaemonSession {
 
             Request::Stop => {
                 self.session = None;
+                self.pending_notifications.clear();
                 Response::Ok(self.to_status())
             }
         }
@@ -378,7 +396,7 @@ pub fn run() {
         }
 
         ds.tick();
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(Duration::from_millis(100));
     }
 
     let _ = std::fs::remove_file(&socket_path);

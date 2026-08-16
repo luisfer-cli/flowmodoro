@@ -31,5 +31,5 @@ pub fn send(request: Request) -> Response {
 }
 
 pub fn daemon_running() -> bool {
-    Config::socket_path().exists()
+    UnixStream::connect(Config::socket_path()).is_ok()
 }

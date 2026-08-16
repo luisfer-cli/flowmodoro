@@ -101,3 +101,18 @@ fn dirs_home() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/tmp"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_durations() {
+        let c = Config::default();
+        assert_eq!(c.work_duration_secs, 25 * 60);
+        assert_eq!(c.break_duration_secs, 5 * 60);
+        assert_eq!(c.long_break_duration_secs, 15 * 60);
+        assert_eq!(c.sessions_before_long_break, 4);
+        assert_eq!(c.break_ratio, 5.0);
+    }
+}

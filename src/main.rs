@@ -30,36 +30,32 @@ enum Commands {
         #[arg(
             long,
             value_parser = parse_duration,
-            default_value = "25m",
-            help = "Work duration (e.g., 25m, 1h, 90s)"
+            help = "Work duration (e.g., 25m, 1h, 90s). Defaults to config."
         )]
-        work: u64,
+        work: Option<u64>,
 
         #[arg(
             long,
             value_parser = parse_duration,
-            default_value = "5m",
-            help = "Break duration"
+            help = "Break duration. Defaults to config."
         )]
-        break_dur: u64,
+        break_dur: Option<u64>,
 
         #[arg(
             long,
             value_parser = parse_duration,
-            default_value = "15m",
-            help = "Long break duration"
+            help = "Long break duration. Defaults to config."
         )]
-        long_break: u64,
+        long_break: Option<u64>,
 
-        #[arg(long, default_value = "4", help = "Sessions before long break")]
-        sessions: u32,
+        #[arg(long, help = "Sessions before long break. Defaults to config.")]
+        sessions: Option<u32>,
 
         #[arg(
             long,
-            default_value = "5",
-            help = "Flowmodoro break ratio (work:break)"
+            help = "Flowmodoro break ratio (work:break). Defaults to config."
         )]
-        ratio: f64,
+        ratio: Option<f64>,
 
         #[arg(long, help = "Task description")]
         task: Option<String>,
@@ -169,16 +165,23 @@ fn main() {
             on_break_end,
         } => {
             config::Config::ensure_dirs();
+            let cfg = config::Config::load();
 
             if !client::daemon_running() {
                 ensure_daemon();
             }
 
+            let work = work.unwrap_or(cfg.work_duration_secs);
+            let break_dur = break_dur.unwrap_or(cfg.break_duration_secs);
+            let long_break = long_break.unwrap_or(cfg.long_break_duration_secs);
+            let sessions = sessions.unwrap_or(cfg.sessions_before_long_break);
+            let ratio = ratio.unwrap_or(cfg.break_ratio);
+
             let hooks = HooksConfig {
-                on_work_start,
-                on_work_end,
-                on_break_start,
-                on_break_end,
+                on_work_start: on_work_start.or_else(|| cfg.hooks.on_work_start.clone()),
+                on_work_end: on_work_end.or_else(|| cfg.hooks.on_work_end.clone()),
+                on_break_start: on_break_start.or_else(|| cfg.hooks.on_break_start.clone()),
+                on_break_end: on_break_end.or_else(|| cfg.hooks.on_break_end.clone()),
             };
 
             let session_type = if flow {
@@ -327,11 +330,11 @@ fn ensure_daemon() {
         .stderr(std::process::Stdio::null())
         .spawn();
 
-    for _ in 0..50 {
+    for _ in 0..20 {
         if client::daemon_running() {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }
 
@@ -343,5 +346,41 @@ fn format_duration(secs: u64) -> String {
         format!("{}h{:02}m{:02}s", h, m, s)
     } else {
         format!("{}m{:02}s", m, s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_minutes() {
+        assert_eq!(parse_duration("25m").unwrap(), 1500);
+    }
+
+    #[test]
+    fn parses_hours() {
+        assert_eq!(parse_duration("1h").unwrap(), 3600);
+    }
+
+    #[test]
+    fn parses_seconds() {
+        assert_eq!(parse_duration("90s").unwrap(), 90);
+    }
+
+    #[test]
+    fn parses_bare_seconds() {
+        assert_eq!(parse_duration("300").unwrap(), 300);
+    }
+
+    #[test]
+    fn rejects_invalid() {
+        assert!(parse_duration("abc").is_err());
+    }
+
+    #[test]
+    fn formats_duration() {
+        assert_eq!(format_duration(1500), "25m00s");
+        assert_eq!(format_duration(3661), "1h01m01s");
     }
 }

@@ -67,14 +67,14 @@ pub fn display(entries: &[HistoryEntry]) {
     println!();
 
     for entry in entries.iter().rev().take(10) {
-        let marker = if entry.completed { "✓" } else { "✗" };
+        let marker = if entry.completed { "[OK]" } else { "[--]" };
         let task = entry.task.as_deref().unwrap_or("");
         let session_type = match entry.session_type {
-            SessionType::Pomodoro => "🍅",
-            SessionType::Flowmodoro => "🌊",
+            SessionType::Pomodoro => "pomodoro ",
+            SessionType::Flowmodoro => "flowmodoro",
         };
         println!(
-            "  {} {} {} work: {} break: {} {}",
+            "  {} {} {}  work: {}  break: {}  {}",
             marker,
             entry.timestamp,
             session_type,
