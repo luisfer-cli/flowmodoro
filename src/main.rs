@@ -91,6 +91,21 @@ enum Commands {
     #[command(about = "Request a break (flowmodoro only)")]
     Break,
 
+    #[command(about = "Start a countdown timer")]
+    Timer {
+        #[arg(value_parser = parse_duration, help = "Timer duration (e.g., 10m, 30s, 1h)")]
+        duration: u64,
+
+        #[arg(long, help = "Task description")]
+        task: Option<String>,
+    },
+
+    #[command(about = "Start a stopwatch")]
+    Stopwatch {
+        #[arg(long, help = "Task description")]
+        task: Option<String>,
+    },
+
     #[command(about = "Stop the daemon")]
     Stop,
 
@@ -227,6 +242,50 @@ fn main() {
         Commands::Cancel => handle_response(client::send(Request::Cancel)),
 
         Commands::Break => handle_response(client::send(Request::Break)),
+
+        Commands::Timer { duration, task } => {
+            config::Config::ensure_dirs();
+            let cfg = config::Config::load();
+
+            if !client::daemon_running() {
+                ensure_daemon();
+            }
+
+            let req = Request::Start(StartRequest {
+                session_type: SessionType::Timer,
+                work_duration_secs: duration,
+                break_duration_secs: 0,
+                long_break_duration_secs: 0,
+                sessions_before_long_break: 1,
+                break_ratio: 0.0,
+                task,
+                hooks: cfg.hooks,
+            });
+
+            handle_response(client::send(req));
+        }
+
+        Commands::Stopwatch { task } => {
+            config::Config::ensure_dirs();
+            let cfg = config::Config::load();
+
+            if !client::daemon_running() {
+                ensure_daemon();
+            }
+
+            let req = Request::Start(StartRequest {
+                session_type: SessionType::Stopwatch,
+                work_duration_secs: 0,
+                break_duration_secs: 0,
+                long_break_duration_secs: 0,
+                sessions_before_long_break: 1,
+                break_ratio: 0.0,
+                task,
+                hooks: cfg.hooks,
+            });
+
+            handle_response(client::send(req));
+        }
 
         Commands::Stop => {
             if client::daemon_running() {

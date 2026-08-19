@@ -72,6 +72,8 @@ pub fn display(entries: &[HistoryEntry]) {
         let session_type = match entry.session_type {
             SessionType::Pomodoro => "pomodoro ",
             SessionType::Flowmodoro => "flowmodoro",
+            SessionType::Timer => "timer     ",
+            SessionType::Stopwatch => "stopwatch ",
         };
         println!(
             "  {} {} {}  work: {}  break: {}  {}",

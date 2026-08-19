@@ -42,46 +42,58 @@ impl DaemonSession {
 
             if s.is_expired() {
                 match s.state {
-                    SessionState::Working => {
-                        let worked_secs = s.elapsed().as_secs();
-                        let is_pomodoro = s.session_type == SessionType::Pomodoro;
-
-                        if is_pomodoro {
-                            history::append(&HistoryEntry {
-                                timestamp: timestamp_now(),
-                                session_type: s.session_type,
-                                work_duration_secs: worked_secs,
-                                break_duration_secs: s.break_duration.as_secs(),
-                                task: s.task.clone(),
-                                completed: true,
-                            });
+                    SessionState::Working => match s.session_type {
+                        SessionType::Timer => {
+                            let worked_secs = s.elapsed().as_secs();
+                            hooks::run_on_work_end(&s.hooks);
+                            notify::send(
+                                "Timer complete!",
+                                &format!("{} elapsed.", format_duration(worked_secs)),
+                                2,
+                            );
+                            self.session = None;
+                            self.pending_notifications.clear();
                         }
+                        _ => {
+                            let worked_secs = s.elapsed().as_secs();
+                            let is_pomodoro = s.session_type == SessionType::Pomodoro;
 
-                        hooks::run_on_work_end(&s.hooks);
-                        self.pending_notifications.push((
-                            "Work session complete!".to_string(),
-                            format!(
-                                "Worked for {}. Time for a break.",
-                                format_duration(worked_secs),
-                            ),
-                            2,
-                        ));
+                            if is_pomodoro {
+                                history::append(&HistoryEntry {
+                                    timestamp: timestamp_now(),
+                                    session_type: s.session_type,
+                                    work_duration_secs: worked_secs,
+                                    break_duration_secs: s.break_duration.as_secs(),
+                                    task: s.task.clone(),
+                                    completed: true,
+                                });
+                            }
 
-                        s.advance_to_break();
-                        hooks::run_on_break_start(&s.hooks);
-                        let break_mins = (if s.current_session >= s.sessions_before_long_break {
-                            s.long_break_duration
-                        } else {
-                            s.break_duration
-                        })
-                        .as_secs()
-                            / 60;
-                        self.pending_notifications.push((
-                            "Break time!".to_string(),
-                            format!("Take a {} minute break.", break_mins),
-                            1,
-                        ));
-                    }
+                            hooks::run_on_work_end(&s.hooks);
+                            self.pending_notifications.push((
+                                "Work session complete!".to_string(),
+                                format!(
+                                    "Worked for {}. Time for a break.",
+                                    format_duration(worked_secs),
+                                ),
+                                2,
+                            ));
+
+                            s.advance_to_break();
+                            hooks::run_on_break_start(&s.hooks);
+                            let break_mins = (if s.current_session >= s.sessions_before_long_break {
+                                s.long_break_duration
+                            } else {
+                                s.break_duration
+                            })
+                            .as_secs() / 60;
+                            self.pending_notifications.push((
+                                "Break time!".to_string(),
+                                format!("Take a {} minute break.", break_mins),
+                                1,
+                            ));
+                        }
+                    },
                     SessionState::OnBreak => {
                         let session_done = s.current_session >= s.sessions_before_long_break;
                         hooks::run_on_break_end(&s.hooks);
@@ -177,25 +189,41 @@ impl DaemonSession {
                         start_req.task,
                         start_req.hooks,
                     ),
+                    SessionType::Timer => Session::new_timer(
+                        start_req.work_duration_secs,
+                        start_req.task,
+                        start_req.hooks,
+                    ),
+                    SessionType::Stopwatch => {
+                        Session::new_stopwatch(start_req.task, start_req.hooks)
+                    }
                 };
 
                 hooks::run_on_work_start(&session.hooks);
-                notify::send(
-                    "Focus time!",
-                    &format!(
-                        "{} started.",
-                        match session.session_type {
-                            SessionType::Pomodoro => {
-                                let mins = session.work_duration.as_secs() / 60;
-                                format!("Pomodoro - {} min work", mins)
-                            }
-                            SessionType::Flowmodoro => {
-                                "Flowmodoro - take your time".to_string()
-                            }
-                        }
+                let (summary, body) = match session.session_type {
+                    SessionType::Pomodoro => {
+                        let mins = session.work_duration.as_secs() / 60;
+                        (
+                            "Focus time!".to_string(),
+                            format!("Pomodoro - {} min work started.", mins),
+                        )
+                    }
+                    SessionType::Flowmodoro => (
+                        "Focus time!".to_string(),
+                        "Flowmodoro - take your time".to_string(),
                     ),
-                    2,
-                );
+                    SessionType::Timer => (
+                        "Timer started".to_string(),
+                        format!(
+                            "{} countdown started.",
+                            format_duration(session.work_duration.as_secs())
+                        ),
+                    ),
+                    SessionType::Stopwatch => {
+                        ("Stopwatch started".to_string(), "Timing...".to_string())
+                    }
+                };
+                notify::send(&summary, &body, 2);
 
                 self.session = Some(session);
                 self.last_tick = Instant::now();
@@ -225,14 +253,19 @@ impl DaemonSession {
                 Some(s) => {
                     let worked = s.elapsed().as_secs();
 
-                    history::append(&HistoryEntry {
-                        timestamp: timestamp_now(),
-                        session_type: s.session_type,
-                        work_duration_secs: worked,
-                        break_duration_secs: 0,
-                        task: s.task.clone(),
-                        completed: false,
-                    });
+                    if matches!(
+                        s.session_type,
+                        SessionType::Pomodoro | SessionType::Flowmodoro
+                    ) {
+                        history::append(&HistoryEntry {
+                            timestamp: timestamp_now(),
+                            session_type: s.session_type,
+                            work_duration_secs: worked,
+                            break_duration_secs: 0,
+                            task: s.task.clone(),
+                            completed: false,
+                        });
+                    }
 
                     self.session = None;
                     self.last_tick = Instant::now();
@@ -312,6 +345,12 @@ fn session_label(s: &Session) -> String {
         ),
         SessionType::Flowmodoro => {
             format!("Flowmodoro, {}", format_duration(s.elapsed().as_secs()),)
+        }
+        SessionType::Timer => {
+            format!("Timer, {}", format_duration(s.elapsed().as_secs()))
+        }
+        SessionType::Stopwatch => {
+            format!("Stopwatch, {}", format_duration(s.elapsed().as_secs()))
         }
     }
 }

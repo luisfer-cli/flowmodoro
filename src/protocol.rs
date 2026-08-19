@@ -67,4 +67,6 @@ pub enum SessionState {
 pub enum SessionType {
     Pomodoro,
     Flowmodoro,
+    Timer,
+    Stopwatch,
 }

@@ -16,32 +16,46 @@ pub fn human(status: &StatusResponse) {
         }
         SessionState::Working => {
             let elapsed = format_duration(status.elapsed_secs);
-            let label = match status.session_type {
-                Some(SessionType::Pomodoro) | None => "Pomodoro",
-                Some(SessionType::Flowmodoro) => "Flowmodoro",
-            };
             let task = status
                 .task
                 .as_deref()
                 .map(|t| format!(" ({})", t))
                 .unwrap_or_default();
-            if status.session_type == Some(SessionType::Flowmodoro) {
-                println!("{} Working{} - elapsed: {}", label, task, elapsed);
-            } else {
-                let total = format_duration(status.total_duration_secs);
-                let remaining = if status.elapsed_secs < status.total_duration_secs {
-                    format_duration(status.total_duration_secs - status.elapsed_secs)
-                } else {
-                    "done".to_string()
-                };
-                let session_info = format!(
-                    "session {}/{}",
-                    status.current_session, status.sessions_before_long_break
-                );
-                println!(
-                    "{} Working{} - [{}] elapsed: {} | remaining: {} | total: {}",
-                    label, task, session_info, elapsed, remaining, total,
-                );
+            match status.session_type {
+                Some(SessionType::Flowmodoro) => {
+                    println!("Flowmodoro Working{} - elapsed: {}", task, elapsed);
+                }
+                Some(SessionType::Stopwatch) => {
+                    println!("Stopwatch{} - elapsed: {}", task, elapsed);
+                }
+                Some(SessionType::Timer) => {
+                    let total = format_duration(status.total_duration_secs);
+                    let remaining = if status.elapsed_secs < status.total_duration_secs {
+                        format_duration(status.total_duration_secs - status.elapsed_secs)
+                    } else {
+                        "done".to_string()
+                    };
+                    println!(
+                        "Timer{} - elapsed: {} | remaining: {} | total: {}",
+                        task, elapsed, remaining, total,
+                    );
+                }
+                Some(SessionType::Pomodoro) | None => {
+                    let total = format_duration(status.total_duration_secs);
+                    let remaining = if status.elapsed_secs < status.total_duration_secs {
+                        format_duration(status.total_duration_secs - status.elapsed_secs)
+                    } else {
+                        "done".to_string()
+                    };
+                    let session_info = format!(
+                        "session {}/{}",
+                        status.current_session, status.sessions_before_long_break
+                    );
+                    println!(
+                        "Pomodoro Working{} - [{}] elapsed: {} | remaining: {} | total: {}",
+                        task, session_info, elapsed, remaining, total,
+                    );
+                }
             }
         }
         SessionState::OnBreak => {
@@ -72,19 +86,23 @@ pub fn waybar(status: &StatusResponse) {
     let (text, class) = match status.state {
         SessionState::Idle => ("".to_string(), "idle".to_string()),
         SessionState::Working => {
-            let icon = match status.session_type {
-                Some(SessionType::Flowmodoro) => "F",
-                _ => "P",
+            let (icon, text) = match status.session_type {
+                Some(SessionType::Flowmodoro) => ("F", format_duration(status.elapsed_secs)),
+                Some(SessionType::Stopwatch) => ("S", format_duration(status.elapsed_secs)),
+                Some(SessionType::Timer) => {
+                    let remaining = status
+                        .total_duration_secs
+                        .saturating_sub(status.elapsed_secs);
+                    ("T", format_duration(remaining))
+                }
+                _ => {
+                    let remaining = status
+                        .total_duration_secs
+                        .saturating_sub(status.elapsed_secs);
+                    ("P", format_duration(remaining))
+                }
             };
-            let text = if status.session_type == Some(SessionType::Flowmodoro) {
-                format!("{} {}", icon, format_duration(status.elapsed_secs))
-            } else {
-                let remaining = status
-                    .total_duration_secs
-                    .saturating_sub(status.elapsed_secs);
-                format!("{} {}", icon, format_duration(remaining))
-            };
-            (text, "working".to_string())
+            (format!("{} {}", icon, text), "working".to_string())
         }
         SessionState::OnBreak => {
             let remaining = status

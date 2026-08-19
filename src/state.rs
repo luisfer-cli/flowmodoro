@@ -42,6 +42,40 @@ impl Session {
         }
     }
 
+    pub fn new_timer(duration_secs: u64, task: Option<String>, hooks: HooksConfig) -> Self {
+        Session {
+            session_type: SessionType::Timer,
+            state: SessionState::Working,
+            phase_start: Some(Instant::now()),
+            accumulated: Duration::ZERO,
+            work_duration: Duration::from_secs(duration_secs),
+            break_duration: Duration::ZERO,
+            long_break_duration: Duration::ZERO,
+            sessions_before_long_break: 1,
+            current_session: 1,
+            break_ratio: 0.0,
+            task,
+            hooks,
+        }
+    }
+
+    pub fn new_stopwatch(task: Option<String>, hooks: HooksConfig) -> Self {
+        Session {
+            session_type: SessionType::Stopwatch,
+            state: SessionState::Working,
+            phase_start: Some(Instant::now()),
+            accumulated: Duration::ZERO,
+            work_duration: Duration::MAX,
+            break_duration: Duration::ZERO,
+            long_break_duration: Duration::ZERO,
+            sessions_before_long_break: 1,
+            current_session: 1,
+            break_ratio: 0.0,
+            task,
+            hooks,
+        }
+    }
+
     pub fn new_flowmodoro(break_ratio: f64, task: Option<String>, hooks: HooksConfig) -> Self {
         Session {
             session_type: SessionType::Flowmodoro,
@@ -68,7 +102,10 @@ impl Session {
 
     pub fn total_duration(&self) -> Duration {
         match self.state {
-            SessionState::Working | SessionState::Paused => self.work_duration,
+            SessionState::Working | SessionState::Paused => match self.session_type {
+                SessionType::Stopwatch => Duration::ZERO,
+                _ => self.work_duration,
+            },
             SessionState::OnBreak => self.current_break_duration(),
             SessionState::Idle => Duration::ZERO,
         }
@@ -86,9 +123,10 @@ impl Session {
 
     pub fn is_expired(&self) -> bool {
         match self.state {
-            SessionState::Working => {
-                self.session_type == SessionType::Pomodoro && self.elapsed() >= self.work_duration
-            }
+            SessionState::Working => match self.session_type {
+                SessionType::Pomodoro | SessionType::Timer => self.elapsed() >= self.work_duration,
+                SessionType::Flowmodoro | SessionType::Stopwatch => false,
+            },
             SessionState::OnBreak => self.elapsed() >= self.total_duration(),
             _ => false,
         }
@@ -106,14 +144,8 @@ impl Session {
         if self.state == SessionState::Paused {
             self.phase_start = Some(Instant::now());
             self.state = match self.session_type {
-                SessionType::Pomodoro => {
-                    if self.accumulated < self.work_duration {
-                        SessionState::Working
-                    } else {
-                        SessionState::OnBreak
-                    }
-                }
-                SessionType::Flowmodoro => {
+                SessionType::Stopwatch | SessionType::Timer => SessionState::Working,
+                _ => {
                     if self.accumulated < self.work_duration {
                         SessionState::Working
                     } else {
@@ -203,6 +235,32 @@ mod tests {
         assert_eq!(s.current_session, 4);
         s.advance_to_break();
         assert_eq!(s.total_duration().as_secs(), 900);
+    }
+
+    #[test]
+    fn timer_initial_state() {
+        let s = Session::new_timer(600, Some("tea".into()), hooks());
+        assert_eq!(s.state, SessionState::Working);
+        assert_eq!(s.session_type, SessionType::Timer);
+        assert_eq!(s.work_duration.as_secs(), 600);
+        assert_eq!(s.total_duration().as_secs(), 600);
+        assert!(!s.is_expired());
+    }
+
+    #[test]
+    fn timer_expires_after_duration() {
+        let mut s = Session::new_timer(600, None, hooks());
+        s.accumulated = Duration::from_secs(600);
+        s.phase_start = None;
+        assert!(s.is_expired());
+    }
+
+    #[test]
+    fn stopwatch_never_expires() {
+        let mut s = Session::new_stopwatch(None, hooks());
+        s.accumulated = Duration::from_secs(999_999);
+        assert!(!s.is_expired());
+        assert_eq!(s.total_duration(), Duration::ZERO);
     }
 
     #[test]

@@ -40,6 +40,14 @@ flow cancel
 # Pedir descanso (solo flowmodoro)
 flow break
 
+# Temporizador (cuenta regresiva)
+flow timer 10m
+flow timer 30s --task "cocinar la pasta"
+
+# Cronómetro (cuenta hacia arriba)
+flow stopwatch
+flow stopwatch --task "reunión"
+
 # Detener el daemon
 flow stop
 
