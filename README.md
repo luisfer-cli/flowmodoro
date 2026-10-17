@@ -1,85 +1,85 @@
 # flow
 
-Temporizador Pomodoro y Flowmodoro para Linux, con un daemon en segundo plano y un cliente por línea de comandos.
+Pomodoro and Flowmodoro timer for Linux, with a background daemon and a command-line client.
 
-## Requisitos
+## Requirements
 
 - Rust (edition 2024)
-- `libdbus` (para notificaciones vía zbus)
+- `libdbus` (for notifications through zbus)
 
-## Instalación
+## Installation
 
 ```sh
 cargo build --release
 install -m 755 target/release/flow ~/.local/bin/flow
 ```
 
-## Uso
+## Usage
 
 ```sh
-# Iniciar un pomodoro (25m trabajo / 5m descanso por defecto)
+# Start a pomodoro (25m work / 5m break by default)
 flow start
 
-# Iniciar con una tarea y duración personalizada
-flow start --task "arreglar bugs" --work 50m --break 10m
+# Start with a task and custom durations
+flow start --task "fix bugs" --work 50m --break 10m
 
-# Iniciar un flowmodoro (descanso proporcional al tiempo trabajado, ratio 5:1)
+# Start a flowmodoro (break proportional to time worked, 5:1 ratio)
 flow start --flow
 
-# Estado actual
+# Show current status
 flow status
 flow status --json
 flow status --waybar
 
-# Pausar / reanudar
+# Pause / resume
 flow pause
 
-# Cancelar la sesión actual
+# Cancel the current session
 flow cancel
 
-# Pedir descanso (solo flowmodoro)
+# Request a break (flowmodoro only)
 flow break
 
-# Temporizador (cuenta regresiva)
+# Timer (counts down)
 flow timer 10m
-flow timer 30s --task "cocinar la pasta"
+flow timer 30s --task "cook pasta"
 
-# Cronómetro (cuenta hacia arriba)
+# Stopwatch (counts up)
 flow stopwatch
-flow stopwatch --task "reunión"
+flow stopwatch --task "meeting"
 
-# Detener el daemon
+# Stop the daemon
 flow stop
 
-# Ver / editar configuración
+# View / edit configuration
 flow config
 flow config --work 50m --break 10m
 
-# Historial de sesiones
+# Session history
 flow history
 flow history --json
 ```
 
-## Configuración
+## Configuration
 
-El archivo de configuración vive en `$XDG_CONFIG_HOME/flow/config.json` (o `~/.config/flow/config.json`). Los valores de `flow config` se usan como valores por defecto al iniciar una sesión:
+The configuration file lives at `$XDG_CONFIG_HOME/flow/config.json` (or `~/.config/flow/config.json`). Values from `flow config` are used as defaults when starting a session:
 
-- `work_duration_secs` — duración del trabajo (defecto 25m)
-- `break_duration_secs` — duración del descanso (defecto 5m)
-- `long_break_duration_secs` — descanso largo (defecto 15m)
-- `sessions_before_long_break` — sesiones antes del descanso largo (defecto 4)
-- `break_ratio` — ratio flowmodoro trabajo:descanso (defecto 5)
-- `hooks` — comandos a ejecutar en los cambios de fase
+- `work_duration_secs` — work duration (25m by default)
+- `break_duration_secs` — break duration (5m by default)
+- `long_break_duration_secs` — long break duration (15m by default)
+- `sessions_before_long_break` — sessions before a long break (4 by default)
+- `break_ratio` — Flowmodoro work-to-break ratio (5 by default)
+- `hooks` — commands to run when phases change
 
 ### Hooks
 
-Se pueden definir comandos que se ejecutan al inicio/fin de cada fase, tanto por CLI como en la configuración:
+Commands can be configured to run at the start or end of each phase, either through the CLI or in the configuration:
 
 ```sh
-flow start --on-work-start "mpv notify.mp3" --on-work-end "notify-send 'Listo'"
+flow start --on-work-start "mpv notify.mp3" --on-work-end "notify-send 'Done'"
 ```
 
-## Notas
+## Notes
 
-- El daemon usa un socket Unix en `$XDG_RUNTIME_DIR/flow/flow.sock` y se auto-reinicia si no está corriendo.
-- Las notificaciones se envían de forma asíncrona por D-Bus; si no hay bus de sesión, se omiten silenciosamente.
+- The daemon uses a Unix socket at `$XDG_RUNTIME_DIR/flow/flow.sock` and starts automatically if it is not running.
+- Notifications are sent asynchronously over D-Bus; if there is no session bus, they are silently skipped.
