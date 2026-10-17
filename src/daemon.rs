@@ -49,7 +49,7 @@ impl DaemonSession {
                             notify::send(
                                 "Timer complete!",
                                 &format!("{} elapsed.", format_duration(worked_secs)),
-                                2,
+                                1,
                             );
                             self.session = None;
                             self.pending_notifications.clear();
@@ -102,7 +102,7 @@ impl DaemonSession {
                             notify::send(
                                 "All sessions complete!",
                                 "You've finished all your pomodoro sessions.",
-                                2,
+                                1,
                             );
                             self.session = None;
                             self.pending_notifications.clear();
@@ -223,7 +223,7 @@ impl DaemonSession {
                         ("Stopwatch started".to_string(), "Timing...".to_string())
                     }
                 };
-                notify::send(&summary, &body, 2);
+                notify::send(&summary, &body, 1);
 
                 self.session = Some(session);
                 self.last_tick = Instant::now();
